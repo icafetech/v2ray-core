@@ -3,18 +3,16 @@ package tcp
 import (
 	"context"
 	gotls "crypto/tls"
-	"net"
 
-	"v2ray.com/core/app/log"
 	"v2ray.com/core/common"
-	v2net "v2ray.com/core/common/net"
+	"v2ray.com/core/common/net"
 	"v2ray.com/core/common/retry"
 	"v2ray.com/core/transport/internet"
 	"v2ray.com/core/transport/internet/tls"
 )
 
-type TCPListener struct {
-	ctx        context.Context
+// Listener is an internet.Listener that listens for TCP connections.
+type Listener struct {
 	listener   *net.TCPListener
 	tlsConfig  *gotls.Config
 	authConfig internet.ConnectionAuthenticator
@@ -22,7 +20,8 @@ type TCPListener struct {
 	addConn    internet.AddConnection
 }
 
-func ListenTCP(ctx context.Context, address v2net.Address, port v2net.Port, addConn internet.AddConnection) (internet.Listener, error) {
+// ListenTCP creates a new Listener based on configurations.
+func ListenTCP(ctx context.Context, address net.Address, port net.Port, addConn internet.AddConnection) (internet.Listener, error) {
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{
 		IP:   address.IP(),
 		Port: int(port),
@@ -30,22 +29,20 @@ func ListenTCP(ctx context.Context, address v2net.Address, port v2net.Port, addC
 	if err != nil {
 		return nil, err
 	}
-	log.Trace(newError("listening TCP on ", address, ":", port))
+	newError("listening TCP on ", address, ":", port).WriteToLog()
 	networkSettings := internet.TransportSettingsFromContext(ctx)
 	tcpSettings := networkSettings.(*Config)
 
-	l := &TCPListener{
-		ctx:      ctx,
+	l := &Listener{
 		listener: listener,
 		config:   tcpSettings,
 		addConn:  addConn,
 	}
-	if securitySettings := internet.SecuritySettingsFromContext(ctx); securitySettings != nil {
-		tlsConfig, ok := securitySettings.(*tls.Config)
-		if ok {
-			l.tlsConfig = tlsConfig.GetTLSConfig()
-		}
+
+	if config := tls.ConfigFromContext(ctx, tls.WithNextProto("h2")); config != nil {
+		l.tlsConfig = config.GetTLSConfig()
 	}
+
 	if tcpSettings.HeaderSettings != nil {
 		headerConfig, err := tcpSettings.HeaderSettings.GetInstance()
 		if err != nil {
@@ -57,14 +54,14 @@ func ListenTCP(ctx context.Context, address v2net.Address, port v2net.Port, addC
 		}
 		l.authConfig = auth
 	}
-	go l.KeepAccepting()
+	go l.keepAccepting(ctx)
 	return l, nil
 }
 
-func (v *TCPListener) KeepAccepting() {
+func (v *Listener) keepAccepting(ctx context.Context) {
 	for {
 		select {
-		case <-v.ctx.Done():
+		case <-ctx.Done():
 			return
 		default:
 		}
@@ -78,7 +75,7 @@ func (v *TCPListener) KeepAccepting() {
 			return nil
 		})
 		if err != nil {
-			log.Trace(newError("failed to accepted raw connections").Base(err).AtWarning())
+			newError("failed to accepted raw connections").Base(err).AtWarning().WriteToLog()
 			continue
 		}
 
@@ -93,11 +90,13 @@ func (v *TCPListener) KeepAccepting() {
 	}
 }
 
-func (v *TCPListener) Addr() net.Addr {
+// Addr implements internet.Listener.Addr.
+func (v *Listener) Addr() net.Addr {
 	return v.listener.Addr()
 }
 
-func (v *TCPListener) Close() error {
+// Close implements internet.Listener.Close.
+func (v *Listener) Close() error {
 	return v.listener.Close()
 }
 

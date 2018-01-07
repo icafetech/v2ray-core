@@ -2,13 +2,12 @@ package scenarios
 
 import (
 	"crypto/rand"
-	"net"
 	"testing"
 	"time"
 
 	"v2ray.com/core"
 	"v2ray.com/core/app/proxyman"
-	v2net "v2ray.com/core/common/net"
+	"v2ray.com/core/common/net"
 	"v2ray.com/core/common/protocol"
 	"v2ray.com/core/common/serial"
 	"v2ray.com/core/common/uuid"
@@ -17,22 +16,23 @@ import (
 	"v2ray.com/core/proxy/vmess"
 	"v2ray.com/core/proxy/vmess/inbound"
 	"v2ray.com/core/proxy/vmess/outbound"
-	"v2ray.com/core/testing/assert"
 	"v2ray.com/core/testing/servers/tcp"
+	"v2ray.com/core/testing/servers/udp"
 	tlsgen "v2ray.com/core/testing/tls"
 	"v2ray.com/core/transport/internet"
 	"v2ray.com/core/transport/internet/tls"
 	"v2ray.com/core/transport/internet/websocket"
+	. "v2ray.com/ext/assert"
 )
 
 func TestSimpleTLSConnection(t *testing.T) {
-	assert := assert.On(t)
+	assert := With(t)
 
 	tcpServer := tcp.Server{
 		MsgProcessor: xor,
 	}
 	dest, err := tcpServer.Start()
-	assert.Error(err).IsNil()
+	assert(err, IsNil)
 	defer tcpServer.Close()
 
 	userID := protocol.NewID(uuid.New())
@@ -41,8 +41,8 @@ func TestSimpleTLSConnection(t *testing.T) {
 		Inbound: []*proxyman.InboundHandlerConfig{
 			{
 				ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
-					PortRange: v2net.SinglePortRange(serverPort),
-					Listen:    v2net.NewIPOrDomain(v2net.LocalHostIP),
+					PortRange: net.SinglePortRange(serverPort),
+					Listen:    net.NewIPOrDomain(net.LocalHostIP),
 					StreamSettings: &internet.StreamConfig{
 						SecurityType: serial.GetMessageType(&tls.Config{}),
 						SecuritySettings: []*serial.TypedMessage{
@@ -75,14 +75,14 @@ func TestSimpleTLSConnection(t *testing.T) {
 		Inbound: []*proxyman.InboundHandlerConfig{
 			{
 				ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
-					PortRange: v2net.SinglePortRange(clientPort),
-					Listen:    v2net.NewIPOrDomain(v2net.LocalHostIP),
+					PortRange: net.SinglePortRange(clientPort),
+					Listen:    net.NewIPOrDomain(net.LocalHostIP),
 				}),
 				ProxySettings: serial.ToTypedMessage(&dokodemo.Config{
-					Address: v2net.NewIPOrDomain(dest.Address),
+					Address: net.NewIPOrDomain(dest.Address),
 					Port:    uint32(dest.Port),
-					NetworkList: &v2net.NetworkList{
-						Network: []v2net.Network{v2net.Network_TCP},
+					NetworkList: &net.NetworkList{
+						Network: []net.Network{net.Network_TCP},
 					},
 				}),
 			},
@@ -92,7 +92,7 @@ func TestSimpleTLSConnection(t *testing.T) {
 				ProxySettings: serial.ToTypedMessage(&outbound.Config{
 					Receiver: []*protocol.ServerEndpoint{
 						{
-							Address: v2net.NewIPOrDomain(v2net.LocalHostIP),
+							Address: net.NewIPOrDomain(net.LocalHostIP),
 							Port:    uint32(serverPort),
 							User: []*protocol.User{
 								{
@@ -119,44 +119,44 @@ func TestSimpleTLSConnection(t *testing.T) {
 	}
 
 	servers, err := InitializeServerConfigs(serverConfig, clientConfig)
-	assert.Error(err).IsNil()
+	assert(err, IsNil)
 
 	conn, err := net.DialTCP("tcp", nil, &net.TCPAddr{
 		IP:   []byte{127, 0, 0, 1},
 		Port: int(clientPort),
 	})
-	assert.Error(err).IsNil()
+	assert(err, IsNil)
 
 	payload := "dokodemo request."
 	nBytes, err := conn.Write([]byte(payload))
-	assert.Error(err).IsNil()
-	assert.Int(nBytes).Equals(len(payload))
+	assert(err, IsNil)
+	assert(nBytes, Equals, len(payload))
 
 	response := readFrom(conn, time.Second*2, len(payload))
-	assert.Bytes(response).Equals(xor([]byte(payload)))
-	assert.Error(conn.Close()).IsNil()
+	assert(response, Equals, xor([]byte(payload)))
+	assert(conn.Close(), IsNil)
 
 	CloseAllServers(servers)
 }
 
 func TestTLSOverKCP(t *testing.T) {
-	assert := assert.On(t)
+	assert := With(t)
 
 	tcpServer := tcp.Server{
 		MsgProcessor: xor,
 	}
 	dest, err := tcpServer.Start()
-	assert.Error(err).IsNil()
+	assert(err, IsNil)
 	defer tcpServer.Close()
 
 	userID := protocol.NewID(uuid.New())
-	serverPort := pickUDPPort()
+	serverPort := udp.PickPort()
 	serverConfig := &core.Config{
 		Inbound: []*proxyman.InboundHandlerConfig{
 			{
 				ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
-					PortRange: v2net.SinglePortRange(serverPort),
-					Listen:    v2net.NewIPOrDomain(v2net.LocalHostIP),
+					PortRange: net.SinglePortRange(serverPort),
+					Listen:    net.NewIPOrDomain(net.LocalHostIP),
 					StreamSettings: &internet.StreamConfig{
 						Protocol:     internet.TransportProtocol_MKCP,
 						SecurityType: serial.GetMessageType(&tls.Config{}),
@@ -190,14 +190,14 @@ func TestTLSOverKCP(t *testing.T) {
 		Inbound: []*proxyman.InboundHandlerConfig{
 			{
 				ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
-					PortRange: v2net.SinglePortRange(clientPort),
-					Listen:    v2net.NewIPOrDomain(v2net.LocalHostIP),
+					PortRange: net.SinglePortRange(clientPort),
+					Listen:    net.NewIPOrDomain(net.LocalHostIP),
 				}),
 				ProxySettings: serial.ToTypedMessage(&dokodemo.Config{
-					Address: v2net.NewIPOrDomain(dest.Address),
+					Address: net.NewIPOrDomain(dest.Address),
 					Port:    uint32(dest.Port),
-					NetworkList: &v2net.NetworkList{
-						Network: []v2net.Network{v2net.Network_TCP},
+					NetworkList: &net.NetworkList{
+						Network: []net.Network{net.Network_TCP},
 					},
 				}),
 			},
@@ -207,7 +207,7 @@ func TestTLSOverKCP(t *testing.T) {
 				ProxySettings: serial.ToTypedMessage(&outbound.Config{
 					Receiver: []*protocol.ServerEndpoint{
 						{
-							Address: v2net.NewIPOrDomain(v2net.LocalHostIP),
+							Address: net.NewIPOrDomain(net.LocalHostIP),
 							Port:    uint32(serverPort),
 							User: []*protocol.User{
 								{
@@ -235,34 +235,34 @@ func TestTLSOverKCP(t *testing.T) {
 	}
 
 	servers, err := InitializeServerConfigs(serverConfig, clientConfig)
-	assert.Error(err).IsNil()
+	assert(err, IsNil)
 
 	conn, err := net.DialTCP("tcp", nil, &net.TCPAddr{
 		IP:   []byte{127, 0, 0, 1},
 		Port: int(clientPort),
 	})
-	assert.Error(err).IsNil()
+	assert(err, IsNil)
 
 	payload := "dokodemo request."
 	nBytes, err := conn.Write([]byte(payload))
-	assert.Error(err).IsNil()
-	assert.Int(nBytes).Equals(len(payload))
+	assert(err, IsNil)
+	assert(nBytes, Equals, len(payload))
 
 	response := readFrom(conn, time.Second*2, len(payload))
-	assert.Bytes(response).Equals(xor([]byte(payload)))
-	assert.Error(conn.Close()).IsNil()
+	assert(response, Equals, xor([]byte(payload)))
+	assert(conn.Close(), IsNil)
 
 	CloseAllServers(servers)
 }
 
 func TestTLSOverWebSocket(t *testing.T) {
-	assert := assert.On(t)
+	assert := With(t)
 
 	tcpServer := tcp.Server{
 		MsgProcessor: xor,
 	}
 	dest, err := tcpServer.Start()
-	assert.Error(err).IsNil()
+	assert(err, IsNil)
 	defer tcpServer.Close()
 
 	userID := protocol.NewID(uuid.New())
@@ -271,8 +271,8 @@ func TestTLSOverWebSocket(t *testing.T) {
 		Inbound: []*proxyman.InboundHandlerConfig{
 			{
 				ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
-					PortRange: v2net.SinglePortRange(serverPort),
-					Listen:    v2net.NewIPOrDomain(v2net.LocalHostIP),
+					PortRange: net.SinglePortRange(serverPort),
+					Listen:    net.NewIPOrDomain(net.LocalHostIP),
 					StreamSettings: &internet.StreamConfig{
 						Protocol:     internet.TransportProtocol_WebSocket,
 						SecurityType: serial.GetMessageType(&tls.Config{}),
@@ -306,14 +306,14 @@ func TestTLSOverWebSocket(t *testing.T) {
 		Inbound: []*proxyman.InboundHandlerConfig{
 			{
 				ReceiverSettings: serial.ToTypedMessage(&proxyman.ReceiverConfig{
-					PortRange: v2net.SinglePortRange(clientPort),
-					Listen:    v2net.NewIPOrDomain(v2net.LocalHostIP),
+					PortRange: net.SinglePortRange(clientPort),
+					Listen:    net.NewIPOrDomain(net.LocalHostIP),
 				}),
 				ProxySettings: serial.ToTypedMessage(&dokodemo.Config{
-					Address: v2net.NewIPOrDomain(dest.Address),
+					Address: net.NewIPOrDomain(dest.Address),
 					Port:    uint32(dest.Port),
-					NetworkList: &v2net.NetworkList{
-						Network: []v2net.Network{v2net.Network_TCP},
+					NetworkList: &net.NetworkList{
+						Network: []net.Network{net.Network_TCP},
 					},
 				}),
 			},
@@ -323,7 +323,7 @@ func TestTLSOverWebSocket(t *testing.T) {
 				ProxySettings: serial.ToTypedMessage(&outbound.Config{
 					Receiver: []*protocol.ServerEndpoint{
 						{
-							Address: v2net.NewIPOrDomain(v2net.LocalHostIP),
+							Address: net.NewIPOrDomain(net.LocalHostIP),
 							Port:    uint32(serverPort),
 							User: []*protocol.User{
 								{
@@ -357,23 +357,23 @@ func TestTLSOverWebSocket(t *testing.T) {
 	}
 
 	servers, err := InitializeServerConfigs(serverConfig, clientConfig)
-	assert.Error(err).IsNil()
+	assert(err, IsNil)
 
 	conn, err := net.DialTCP("tcp", nil, &net.TCPAddr{
 		IP:   []byte{127, 0, 0, 1},
 		Port: int(clientPort),
 	})
-	assert.Error(err).IsNil()
+	assert(err, IsNil)
 
 	payload := make([]byte, 10240*1024)
 	rand.Read(payload)
 	nBytes, err := conn.Write([]byte(payload))
-	assert.Error(err).IsNil()
-	assert.Int(nBytes).Equals(len(payload))
+	assert(err, IsNil)
+	assert(nBytes, Equals, len(payload))
 
 	response := readFrom(conn, time.Second*20, len(payload))
-	assert.Bytes(response).Equals(xor([]byte(payload)))
-	assert.Error(conn.Close()).IsNil()
+	assert(response, Equals, xor([]byte(payload)))
+	assert(conn.Close(), IsNil)
 
 	CloseAllServers(servers)
 }
